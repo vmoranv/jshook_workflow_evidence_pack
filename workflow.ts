@@ -2,70 +2,151 @@ import {
   createWorkflow,
   type WorkflowExecutionContext,
   SequenceNodeBuilder,
-  toolNode,
 } from '@jshookmcp/extension-sdk/workflow';
 
-const workflowId = 'workflow.template-capture.v1';
+const workflowId = 'workflow.evidence-pack.v1';
 
-export default createWorkflow(workflowId, 'Template Capture Workflow')
+/**
+ * Evidence Pack — Reverse Mission Workflow
+ *
+ * One-click export of the current reverse engineering session:
+ *   1. Queries the full evidence graph
+ *   2. Exports HAR from network capture
+ *   3. Takes a page screenshot
+ *   4. Collects session insights
+ *   5. Gathers instrumentation session data
+ *   6. Captures console logs and local storage state
+ *   7. Packages everything into a structured evidence bundle
+ */
+export default createWorkflow(workflowId, 'Evidence Pack')
   .description(
-    'TypeScript-first MVP workflow that enables network capture, navigates to a page, collects surface data in parallel, extracts auth, and emits a summary.',
+    'One-click export of the current reverse session: evidence graph, HAR, screenshot, console logs, storage, instrumentation sessions, and session insights — packaged as a replayable evidence bundle.',
   )
-  .tags(['workflow', 'template', 'parallel', 'capture'])
-  .timeoutMs(10 * 60_000)
-  .defaultMaxConcurrency(4)
+  .tags([
+    'reverse',
+    'evidence',
+    'export',
+    'report',
+    'har',
+    'screenshot',
+    'session',
+    'mission',
+  ])
+  .timeoutMs(5 * 60_000)
+  .defaultMaxConcurrency(6)
   .buildGraph((ctx: WorkflowExecutionContext) => {
-    const prefix = 'workflows.templateCapture';
-    const url = String(ctx.getConfig(`${prefix}.url`, 'https://example.com'));
-    const waitUntil = String(ctx.getConfig(`${prefix}.waitUntil`, 'domcontentloaded'));
-    const requestTail = Number(ctx.getConfig(`${prefix}.requestTail`, 20));
-    const maxConcurrency = Number(ctx.getConfig(`${prefix}.parallel.maxConcurrency`, 4));
-    const collectConsoleLogs = Boolean(ctx.getConfig(`${prefix}.collectConsoleLogs`, true));
-    const logLimit = Number(ctx.getConfig(`${prefix}.consoleLogLimit`, 50));
+    const prefix = 'workflows.evidencePack';
 
-    const root = new SequenceNodeBuilder('template-capture-root');
+    // ── Config ──────────────────────────────────────────────────────
+    const includeHar = Boolean(ctx.getConfig(`${prefix}.includeHar`, true));
+    const includeScreenshot = Boolean(ctx.getConfig(`${prefix}.includeScreenshot`, true));
+    const includeConsoleLogs = Boolean(ctx.getConfig(`${prefix}.includeConsoleLogs`, true));
+    const includeStorage = Boolean(ctx.getConfig(`${prefix}.includeStorage`, true));
+    const consoleLogLimit = Number(ctx.getConfig(`${prefix}.consoleLogLimit`, 100));
+    const maxConcurrency = Number(ctx.getConfig(`${prefix}.parallel.maxConcurrency`, 6));
+    const exportFormat = String(ctx.getConfig(`${prefix}.exportFormat`, 'json'));
+    const requestTail = Number(ctx.getConfig(`${prefix}.requestTail`, 100));
+
+    const root = new SequenceNodeBuilder('evidence-pack-root');
 
     root
-      .tool('enable-network', 'network_enable', { input: { enableExceptions: true } })
-      .tool('navigate', 'page_navigate', { input: { url, waitUntil } })
-      .parallel('collect-surface', (p) => {
+      // ── Phase 1: Parallel Collection ──────────────────────────────
+      .parallel('collect-evidence', (p) => {
         p.maxConcurrency(maxConcurrency)
           .failFast(false)
-          .tool('collect-local-storage', 'page_get_local_storage')
-          .tool('collect-cookies', 'page_get_cookies')
-          .tool('collect-requests', 'network_get_requests', { input: { tail: requestTail } })
-          .tool('collect-links', 'page_get_all_links');
+          // Evidence graph
+          .tool('query-evidence-graph', 'evidence_query', {
+            input: { format: exportFormat },
+          })
+          // Session insights
+          .tool('get-session-insights', 'get_session_insights', {
+            input: {},
+          })
+          // Instrumentation sessions
+          .tool('list-sessions', 'instrumentation_session_list', {
+            input: {},
+          })
+          // Network requests
+          .tool('get-requests', 'network_get_requests', {
+            input: { tail: requestTail },
+          })
+          // Cookies
+          .tool('get-cookies', 'page_get_cookies');
 
-        if (collectConsoleLogs) {
-          p.tool('collect-console-logs', 'console_get_logs', { input: { limit: logLimit } });
+        // Optional collectors
+        if (includeHar) {
+          p.tool('export-har', 'network_export_har', {
+            input: {},
+          });
+        }
+
+        if (includeScreenshot) {
+          p.tool('take-screenshot', 'page_screenshot', {
+            input: { fullPage: true },
+          });
+        }
+
+        if (includeConsoleLogs) {
+          p.tool('get-console-logs', 'console_get_logs', {
+            input: { limit: consoleLogLimit },
+          });
+        }
+
+        if (includeStorage) {
+          p.tool('get-local-storage', 'page_get_local_storage');
         }
       })
-      .tool('extract-auth', 'network_extract_auth', { input: { minConfidence: 0.4 } })
-      .tool('emit-summary', 'console_execute', {
+
+      // ── Phase 2: Auth Surface ─────────────────────────────────────
+      .tool('extract-auth', 'network_extract_auth', {
+        input: { minConfidence: 0.2 },
+      })
+
+      // ── Phase 3: Page Snapshot (Coordination) ─────────────────────
+      .tool('save-page-snapshot', 'save_page_snapshot', {
+        input: {},
+      })
+
+      // ── Phase 4: Evidence Export ──────────────────────────────────
+      .tool('export-evidence', 'evidence_export', {
+        input: { format: exportFormat },
+      })
+
+      // ── Phase 5: Summary Insight ──────────────────────────────────
+      .tool('emit-insight', 'append_session_insight', {
         input: {
-          expression: `(${JSON.stringify({
-            status: 'template_capture_complete',
+          insight: JSON.stringify({
+            status: 'evidence_pack_complete',
             workflowId,
-            url,
-            waitUntil,
-            requestTail,
-            maxConcurrency,
-            collectConsoleLogs,
-          })})`,
+            includeHar,
+            includeScreenshot,
+            includeConsoleLogs,
+            includeStorage,
+            exportFormat,
+          }),
         },
       });
 
     return root;
   })
   .onStart((ctx) => {
-    ctx.emitMetric('workflow_runs_total', 1, 'counter', { workflowId, stage: 'start' });
+    ctx.emitMetric('workflow_runs_total', 1, 'counter', {
+      workflowId,
+      mission: 'evidence_pack',
+      stage: 'start',
+    });
   })
   .onFinish((ctx) => {
-    ctx.emitMetric('workflow_runs_total', 1, 'counter', { workflowId, stage: 'finish' });
+    ctx.emitMetric('workflow_runs_total', 1, 'counter', {
+      workflowId,
+      mission: 'evidence_pack',
+      stage: 'finish',
+    });
   })
   .onError((ctx, error) => {
     ctx.emitMetric('workflow_errors_total', 1, 'counter', {
       workflowId,
+      mission: 'evidence_pack',
       stage: 'error',
       error: error.name,
     });
