@@ -1,6 +1,7 @@
 name: evidence-pack
 description: JSHook workflow for evidence-pack
 author: vmoranv
+source_repo: https://github.com/vmoranv/jshook_workflow_evidence_pack
 tags:
   - workflow
   - evidence-pack
