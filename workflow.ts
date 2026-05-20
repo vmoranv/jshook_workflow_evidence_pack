@@ -1,7 +1,7 @@
 import {
-  createWorkflow,
+  defineWorkflow,
+  sequenceStep,
   type WorkflowExecutionContext,
-  SequenceNodeBuilder,
 } from '@jshookmcp/extension-sdk/workflow';
 
 const workflowId = 'workflow.evidence-pack.v1';
@@ -18,8 +18,9 @@ const workflowId = 'workflow.evidence-pack.v1';
  *   6. Captures console logs and local storage state
  *   7. Packages everything into a structured evidence bundle
  */
-export default createWorkflow(workflowId, 'Evidence Pack')
-  .description(
+export default defineWorkflow(workflowId, 'Evidence Pack', (workflow) =>
+  workflow
+.description(
     'One-click export of the current reverse session: evidence graph, HAR, screenshot, console logs, storage, instrumentation sessions, and session insights — packaged as a replayable evidence bundle.',
   )
   .tags([
@@ -47,7 +48,7 @@ export default createWorkflow(workflowId, 'Evidence Pack')
     const exportFormat = String(ctx.getConfig(`${prefix}.exportFormat`, 'json'));
     const requestTail = Number(ctx.getConfig(`${prefix}.requestTail`, 100));
 
-    const root = new SequenceNodeBuilder('evidence-pack-root');
+    return sequenceStep('evidence-pack-root', (root) => {
 
     root
       // ── Phase 1: Parallel Collection ──────────────────────────────
@@ -127,7 +128,7 @@ export default createWorkflow(workflowId, 'Evidence Pack')
         },
       });
 
-    return root;
+    });
   })
   .onStart((ctx) => {
     ctx.emitMetric('workflow_runs_total', 1, 'counter', {
@@ -151,4 +152,4 @@ export default createWorkflow(workflowId, 'Evidence Pack')
       error: error.name,
     });
   })
-  .build();
+  );
